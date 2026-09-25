@@ -1,0 +1,68 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check auth
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // User profile access
+    match /users/{userId} {
+      allow read: if true;
+      allow write: if isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Guides directory & verified credentials
+    match /guides/{guideId} {
+      allow read: if true;
+      allow write: if isAuthenticated() && request.auth.uid == guideId;
+    }
+
+    // Digital Handshakes — Append-only verified encounter ledger
+    match /handshakes/{handshakeId} {
+      allow read: if true;
+      allow create: if request.resource.data.guideId is string 
+                    && request.resource.data.travelerId is string
+                    && request.resource.data.lat is number
+                    && request.resource.data.lng is number
+                    && request.resource.data.timestamp is int;
+      allow update, delete: if false; // Tamper-evident: Cannot be altered once written
+    }
+
+    // Proof-of-Presence Reviews — strictly gated by verified Handshake
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create: if request.resource.data.handshakeId is string
+                    && request.resource.data.guideId is string
+                    && request.resource.data.rating >= 1 
+                    && request.resource.data.rating <= 5
+                    && request.resource.data.presenceVerified == true;
+      allow update, delete: if false; // Reviews cannot be silently modified
+    }
+
+    // Live Price Pulse — 3-second post-handshake price submissions
+    match /pricePulse/{pulseId} {
+      allow read: if true;
+      allow create: if request.resource.data.amount is number
+                    && request.resource.data.amount > 0
+                    && request.resource.data.serviceType is string
+                    && request.resource.data.monumentId is string;
+      allow update, delete: if false;
+    }
+
+    // Scam Hotspots & Danger Zones
+    match /hotspots/{hotspotId} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    // Emergency SOS & Tourist Police Evidence Dossiers
+    match /incidents/{incidentId} {
+      allow read: if true;
+      allow create: if true; // Always allow immediate emergency panic logging
+      allow update: if isAuthenticated();
+      allow delete: if false;
+    }
+  }
+}
